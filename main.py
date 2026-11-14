@@ -50,22 +50,28 @@ def main(page: ft.Page):
                 size=22,
                 weight=ft.FontWeight.BOLD,
             ),
-            ft.Text(str(exc), selectable=True),
+            ft.Text(
+                str(exc),
+                selectable=True,
+            ),
         )
         return
 
+    # Поле ввода
     title_field = ft.TextField(
         label="Название задачи",
         hint_text="Например: подготовить отчёт",
-        expand=True,
+        width=350,
     )
 
+    # Список задач
     tasks_list = ft.ListView(
         expand=True,
         spacing=8,
         auto_scroll=False,
     )
 
+    # Статус
     status = ft.Text(
         "Готово",
         color=ft.Colors.GREY_700,
@@ -103,9 +109,12 @@ def main(page: ft.Page):
                 ):
                     try:
                         supabase.table(TABLE_NAME).update(
-                            {"done": not old_value}
+                            {
+                                "done": not old_value
+                            }
                         ).eq(
-                            "id", item_id
+                            "id",
+                            item_id,
                         ).execute()
 
                         load_tasks()
@@ -114,10 +123,14 @@ def main(page: ft.Page):
                     except Exception as exc:
                         show_error(str(exc))
 
-                def delete_task(e, item_id=task_id):
+                def delete_task(
+                    e,
+                    item_id=task_id,
+                ):
                     try:
                         supabase.table(TABLE_NAME).delete().eq(
-                            "id", item_id
+                            "id",
+                            item_id,
                         ).execute()
 
                         load_tasks()
@@ -126,48 +139,49 @@ def main(page: ft.Page):
                     except Exception as exc:
                         show_error(str(exc))
 
-                tasks_list.controls.append(
-                    ft.Card(
-                        content=ft.Container(
-                            padding=10,
-                            content=ft.Row(
-                                [
-                                    ft.Checkbox(
-                                        value=done,
-                                        on_change=toggle_task,
-                                    ),
-                                    ft.Text(
-                                        task["title"],
-                                        expand=True,
-                                        size=16,
-                                        weight=(
-                                            ft.FontWeight.BOLD
-                                            if not done
-                                            else ft.FontWeight.NORMAL
-                                        ),
-                                        style=(
-                                            ft.TextStyle(
-                                                decoration=(
-                                                    ft.TextDecoration.LINE_THROUGH
-                                                )
-                                            )
-                                            if done
-                                            else None
-                                        ),
-                                    ),
-                                    ft.IconButton(
-                                        icon=ft.Icons.DELETE_OUTLINE,
-                                        tooltip="Удалить",
-                                        on_click=delete_task,
-                                    ),
-                                ],
-                                alignment=(
-                                    ft.MainAxisAlignment.SPACE_BETWEEN
-                                ),
-                            ),
+                # Текст задачи
+                task_text = ft.Text(
+                    task["title"],
+                    expand=True,
+                    size=16,
+                    weight=(
+                        ft.FontWeight.BOLD
+                        if not done
+                        else ft.FontWeight.NORMAL
+                    ),
+                    style=(
+                        ft.TextStyle(
+                            decoration=ft.TextDecoration.LINE_THROUGH
                         )
+                        if done
+                        else None
+                    ),
+                )
+
+                # Карточка задачи
+                task_card = ft.Card(
+                    content=ft.Container(
+                        padding=10,
+                        content=ft.Row(
+                            [
+                                ft.Checkbox(
+                                    value=done,
+                                    on_change=toggle_task,
+                                ),
+                                task_text,
+                                ft.IconButton(
+                                    icon=ft.Icons.DELETE_OUTLINE,
+                                    tooltip="Удалить",
+                                    on_click=delete_task,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
                     )
                 )
+
+                tasks_list.controls.append(task_card)
 
             page.update()
 
@@ -201,24 +215,34 @@ def main(page: ft.Page):
         load_tasks()
         show_ok("Список обновлён")
 
+    # Enter в поле тоже добавляет задачу
     title_field.on_submit = add_task
 
+    # Заголовок
     page.add(
         ft.Text(
             "Мои задачи",
             size=28,
             weight=ft.FontWeight.BOLD,
         ),
-        ft.Row(
+
+        # Поле + кнопка теперь вертикально,
+        # чтобы нормально помещаться на телефоне
+        ft.Column(
             [
                 title_field,
+
                 ft.FilledButton(
                     "Добавить",
                     icon=ft.Icons.ADD,
                     on_click=add_task,
+                    width=160,
                 ),
-            ]
+            ],
+            spacing=10,
         ),
+
+        # Кнопка обновления + статус
         ft.Row(
             [
                 ft.OutlinedButton(
@@ -226,16 +250,23 @@ def main(page: ft.Page):
                     icon=ft.Icons.REFRESH,
                     on_click=refresh,
                 ),
+
                 status,
-            ]
+            ],
+            wrap=True,
+            spacing=10,
         ),
+
         ft.Divider(),
+
+        # Список задач
         ft.Container(
             content=tasks_list,
             expand=True,
         ),
     )
 
+    # Загружаем задачи при запуске
     load_tasks()
 
 
