@@ -1,2 +1,2 @@
-flet==1.1.2
-supabase==2.34.1
+flet
+supabase
