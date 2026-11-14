@@ -8,6 +8,11 @@ dependencies = [
     "supabase",
 ]
 
+[dependency-groups]
+dev = [
+    "flet-cli",
+]
+
 [tool.flet]
 org = "com.example"
 product = "My Tasks"
