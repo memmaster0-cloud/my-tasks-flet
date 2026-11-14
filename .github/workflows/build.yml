@@ -21,25 +21,17 @@ jobs:
         run: |
           echo 'SUPABASE_URL = "${{ secrets.SUPABASE_URL }}"' > app_config.py
           echo 'SUPABASE_KEY = "${{ secrets.SUPABASE_KEY }}"' >> app_config.py
-          cat app_config.py
-
-      - name: Show project files
-        run: |
-          echo "===== PROJECT FILES ====="
-          find . -maxdepth 2 -type f | sort
-          echo "===== PYPROJECT ====="
-          cat pyproject.toml
+          echo "app_config.py created"
 
       - name: Install Flet CLI
         run: |
           python3.14 -m pip install --upgrade pip
-          python3.14 -m pip install flet-cli flet supabase
+          python3.14 -m pip install "flet[all]" supabase
 
       - name: Check Flet
         run: |
-          python3.14 -m flet --version
-          python3.14 -c "import flet; print('Flet import OK')"
+          flet --version
 
       - name: Build APK
         run: |
-          python3.14 -m flet build apk --yes
+          flet build apk --yes --python-version 3.14
