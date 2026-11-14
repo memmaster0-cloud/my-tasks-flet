@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+app_config.py
+build/
+dist/
+.pytest_cache/
+.vscode/
+.idea/
