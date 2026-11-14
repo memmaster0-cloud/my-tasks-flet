@@ -2,33 +2,32 @@ import os
 import flet as ft
 from supabase import create_client, Client
 
+
+# Supabase config generated during GitHub Actions build
+try:
+    from app_config import SUPABASE_URL as CONFIG_URL
+    from app_config import SUPABASE_KEY as CONFIG_KEY
+except ImportError:
+    CONFIG_URL = None
+    CONFIG_KEY = None
+
+
 TABLE_NAME = "tasks"
 
 
 def get_config() -> tuple[str, str]:
-    """Reads Supabase settings from environment variables.
+    """Get Supabase credentials from environment or bundled app config."""
 
-    Local development:
-      SUPABASE_URL=...
-      SUPABASE_KEY=...
-
-    In GitHub Actions, app_config.py is generated from GitHub Secrets
-    and imported as a fallback, so no real credentials are committed.
-    """
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+    url = os.getenv("SUPABASE_URL") or CONFIG_URL
+    key = os.getenv("SUPABASE_KEY") or CONFIG_KEY
 
     if url and key:
         return url, key
 
-    try:
-        from app_config import SUPABASE_URL, SUPABASE_KEY
-        return SUPABASE_URL, SUPABASE_KEY
-    except ImportError as exc:
-        raise RuntimeError(
-            "Supabase credentials are not configured. "
-            "Set SUPABASE_URL and SUPABASE_KEY in the environment."
-        ) from exc
+    raise RuntimeError(
+        "Supabase credentials are not configured. "
+        "Set SUPABASE_URL and SUPABASE_KEY."
+    )
 
 
 def create_supabase_client() -> Client:
@@ -46,7 +45,11 @@ def main(page: ft.Page):
         supabase = create_supabase_client()
     except Exception as exc:
         page.add(
-            ft.Text("Ошибка подключения к Supabase", size=22, weight=ft.FontWeight.BOLD),
+            ft.Text(
+                "Ошибка подключения к Supabase",
+                size=22,
+                weight=ft.FontWeight.BOLD,
+            ),
             ft.Text(str(exc), selectable=True),
         )
         return
@@ -56,8 +59,17 @@ def main(page: ft.Page):
         hint_text="Например: подготовить отчёт",
         expand=True,
     )
-    tasks_list = ft.ListView(expand=True, spacing=8, auto_scroll=False)
-    status = ft.Text("Готово", color=ft.Colors.GREY_700)
+
+    tasks_list = ft.ListView(
+        expand=True,
+        spacing=8,
+        auto_scroll=False,
+    )
+
+    status = ft.Text(
+        "Готово",
+        color=ft.Colors.GREY_700,
+    )
 
     def show_error(message: str):
         status.value = f"Ошибка: {message}"
@@ -84,13 +96,21 @@ def main(page: ft.Page):
                 task_id = task["id"]
                 done = bool(task["done"])
 
-                def toggle_task(e, item_id=task_id, old_value=done):
+                def toggle_task(
+                    e,
+                    item_id=task_id,
+                    old_value=done,
+                ):
                     try:
                         supabase.table(TABLE_NAME).update(
                             {"done": not old_value}
-                        ).eq("id", item_id).execute()
+                        ).eq(
+                            "id", item_id
+                        ).execute()
+
                         load_tasks()
                         show_ok("Статус задачи изменён")
+
                     except Exception as exc:
                         show_error(str(exc))
 
@@ -99,8 +119,10 @@ def main(page: ft.Page):
                         supabase.table(TABLE_NAME).delete().eq(
                             "id", item_id
                         ).execute()
+
                         load_tasks()
                         show_ok("Задача удалена")
+
                     except Exception as exc:
                         show_error(str(exc))
 
@@ -125,7 +147,9 @@ def main(page: ft.Page):
                                         ),
                                         style=(
                                             ft.TextStyle(
-                                                decoration=ft.TextDecoration.LINE_THROUGH
+                                                decoration=(
+                                                    ft.TextDecoration.LINE_THROUGH
+                                                )
                                             )
                                             if done
                                             else None
@@ -137,13 +161,16 @@ def main(page: ft.Page):
                                         on_click=delete_task,
                                     ),
                                 ],
-                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                alignment=(
+                                    ft.MainAxisAlignment.SPACE_BETWEEN
+                                ),
                             ),
                         )
                     )
                 )
 
             page.update()
+
         except Exception as exc:
             show_error(str(exc))
 
@@ -156,12 +183,17 @@ def main(page: ft.Page):
 
         try:
             supabase.table(TABLE_NAME).insert(
-                {"title": title, "done": False}
+                {
+                    "title": title,
+                    "done": False,
+                }
             ).execute()
 
             title_field.value = ""
+
             load_tasks()
             show_ok("Задача добавлена")
+
         except Exception as exc:
             show_error(str(exc))
 
@@ -172,11 +204,19 @@ def main(page: ft.Page):
     title_field.on_submit = add_task
 
     page.add(
-        ft.Text("Мои задачи", size=28, weight=ft.FontWeight.BOLD),
+        ft.Text(
+            "Мои задачи",
+            size=28,
+            weight=ft.FontWeight.BOLD,
+        ),
         ft.Row(
             [
                 title_field,
-                ft.FilledButton("Добавить", icon=ft.Icons.ADD, on_click=add_task),
+                ft.FilledButton(
+                    "Добавить",
+                    icon=ft.Icons.ADD,
+                    on_click=add_task,
+                ),
             ]
         ),
         ft.Row(
@@ -190,7 +230,10 @@ def main(page: ft.Page):
             ]
         ),
         ft.Divider(),
-        ft.Container(content=tasks_list, expand=True),
+        ft.Container(
+            content=tasks_list,
+            expand=True,
+        ),
     )
 
     load_tasks()
