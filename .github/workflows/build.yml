@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -32,10 +32,38 @@ jobs:
           bundled-python-version: "3.14"
           build-number: ${{ github.run_number }}
 
-      - name: Upload APK
+      - name: Find APK
+        id: apk
+        run: |
+          APK_PATH=$(find "${{ steps.build.outputs.output-path }}" -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK_PATH" ]; then
+            echo "APK not found!"
+            find "${{ steps.build.outputs.output-path }}" -type f
+            exit 1
+          fi
+
+          echo "APK found: $APK_PATH"
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK
+        run: |
+          cp "${{ steps.apk.outputs.path }}" "MyTasks.apk"
+          ls -lh MyTasks.apk
+
+      - name: Upload APK as artifact
         uses: actions/upload-artifact@v7
         with:
           name: android-apk
-          path: ${{ steps.build.outputs.archive-path }}
+          path: MyTasks.apk
           if-no-files-found: error
-          archive: false
+          archive: true
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "My Tasks v1.0.${{ github.run_number }}"
+          files: MyTasks.apk
+          generate_release_notes: true
