@@ -16,3 +16,6 @@ dev = [
 [tool.flet]
 org = "com.example"
 product = "My Tasks"
+
+[tool.flet.app]
+include = ["app_config.py"]
