@@ -17,6 +17,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Create Supabase config
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          cat > app_config.py <<EOF
+          SUPABASE_URL = ${SUPABASE_URL@Q}
+          SUPABASE_KEY = ${SUPABASE_KEY@Q}
+          EOF
+
+          echo "Checking app_config.py..."
+          test -s app_config.py
+          sed 's/SUPABASE_URL = .*/SUPABASE_URL = "***HIDDEN***"/; s/SUPABASE_KEY = .*/SUPABASE_KEY = "***HIDDEN***"/' app_config.py
+
       - name: Build Flet APK
         id: build
         uses: flet-dev/flet-build-action@v1
@@ -25,9 +40,6 @@ jobs:
           runner-python-version: "3.14"
           bundled-python-version: "3.14"
           build-number: ${{ github.run_number }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
