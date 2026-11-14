@@ -4,8 +4,8 @@ version = "1.0.0"
 description = "Task list application with Flet and Supabase"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "flet[all]",
-    "supabase",
+    "flet==1.1.2",
+    "supabase==2.34.1",
 ]
 
 [tool.flet]
