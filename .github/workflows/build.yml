@@ -17,20 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Create Supabase config
-        shell: bash
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      - name: Create app config
         run: |
-          cat > app_config.py <<EOF
-          SUPABASE_URL = ${SUPABASE_URL@Q}
-          SUPABASE_KEY = ${SUPABASE_KEY@Q}
-          EOF
-
-          echo "Checking app_config.py..."
-          test -s app_config.py
-          sed 's/SUPABASE_URL = .*/SUPABASE_URL = "***HIDDEN***"/; s/SUPABASE_KEY = .*/SUPABASE_KEY = "***HIDDEN***"/' app_config.py
+          echo 'SUPABASE_URL = "${{ secrets.SUPABASE_URL }}"' > app_config.py
+          echo 'SUPABASE_KEY = "${{ secrets.SUPABASE_KEY }}"' >> app_config.py
+          echo "app_config.py created"
 
       - name: Build Flet APK
         id: build
