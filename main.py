@@ -1,5 +1,7 @@
 import os
+
 import flet as ft
+import httpx
 from supabase import create_client, Client
 
 
@@ -246,6 +248,8 @@ def main(page: ft.Page):
             show_error(str(exc))
 
     # Добавление новой задачи
+    # Используем прямой REST API через httpx,
+    # потому что supabase-py insert() возвращал 405.
     def add_task(e):
         title = (title_field.value or "").strip()
 
@@ -254,27 +258,38 @@ def main(page: ft.Page):
             return
 
         try:
-            print("INSERT START")
-            print("TITLE:", title)
+            url, key = get_config()
 
-            # ВАЖНО:
-            # returning="minimal" просит Supabase
-            # не возвращать созданную запись.
-            response = (
-                supabase
-                .table(TABLE_NAME)
-                .insert(
-                    {
-                        "title": title,
-                        "done": False,
-                    },
-                    returning="minimal",
-                )
-                .execute()
+            response = httpx.post(
+                f"{url}/rest/v1/{TABLE_NAME}",
+                headers={
+                    "apikey": key,
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=minimal",
+                },
+                json={
+                    "title": title,
+                    "done": False,
+                },
+                timeout=15,
             )
 
-            print("INSERT RESPONSE:", response)
-            print("INSERT DATA:", response.data)
+            print(
+                "DIRECT INSERT STATUS:",
+                response.status_code,
+            )
+
+            print(
+                "DIRECT INSERT RESPONSE:",
+                response.text,
+            )
+
+            if response.status_code not in (200, 201, 204):
+                raise RuntimeError(
+                    f"Supabase INSERT error "
+                    f"{response.status_code}: {response.text}"
+                )
 
             title_field.value = ""
 
