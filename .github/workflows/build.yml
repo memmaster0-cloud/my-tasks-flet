@@ -3,7 +3,6 @@ name: Build Android APK
 on:
   push:
     branches: ["main", "master"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -21,9 +20,8 @@ jobs:
         run: |
           echo 'SUPABASE_URL = "${{ secrets.SUPABASE_URL }}"' > app_config.py
           echo 'SUPABASE_KEY = "${{ secrets.SUPABASE_KEY }}"' >> app_config.py
-          echo "app_config.py created"
 
-      - name: Install Flet CLI
+      - name: Install dependencies
         run: |
           python3.14 -m pip install --upgrade pip
           python3.14 -m pip install "flet[all]" supabase
@@ -35,3 +33,30 @@ jobs:
       - name: Build APK
         run: |
           flet build apk --yes --python-version 3.14
+
+      - name: Find APK
+        run: |
+          echo "Searching for APK..."
+          find . -type f -name "*.apk" -print
+
+      - name: Copy APK
+        run: |
+          APK=$(find . -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK not found"
+            exit 1
+          fi
+
+          echo "Found: $APK"
+          cp "$APK" MyTasks.apk
+
+          ls -lh MyTasks.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: MyTasks-APK
+          path: MyTasks.apk
+          if-no-files-found: error
+          archive: true
