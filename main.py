@@ -41,8 +41,10 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.LIGHT
     page.scroll = ft.ScrollMode.AUTO
 
+    # Подключение к Supabase
     try:
         supabase = create_supabase_client()
+
     except Exception as exc:
         page.add(
             ft.Text(
@@ -57,7 +59,7 @@ def main(page: ft.Page):
         )
         return
 
-    # Поле ввода
+    # Поле ввода новой задачи
     title_field = ft.TextField(
         label="Название задачи",
         hint_text="Например: подготовить отчёт",
@@ -87,56 +89,104 @@ def main(page: ft.Page):
         status.color = ft.Colors.GREEN_700
         page.update()
 
+    # Загрузка задач
     def load_tasks():
         try:
             response = (
-                supabase.table(TABLE_NAME)
+                supabase
+                .table(TABLE_NAME)
                 .select("id,title,done,created_at")
                 .order("created_at", desc=True)
                 .execute()
             )
 
+            print("SUPABASE RESPONSE:", response)
+            print("RESPONSE DATA:", response.data)
+            print("DATA TYPE:", type(response.data))
+
             tasks_list.controls.clear()
 
             for task in response.data or []:
+
+                print("TASK:", task)
+                print("TASK TYPE:", type(task))
+
+                if not isinstance(task, dict):
+                    raise TypeError(
+                        "Ожидался объект задачи (dict), "
+                        f"но получено {type(task).__name__}: {task}"
+                    )
+
                 task_id = task["id"]
                 done = bool(task["done"])
 
+                # Изменение статуса задачи
                 def toggle_task(
                     e,
                     item_id=task_id,
                     old_value=done,
                 ):
                     try:
-                        supabase.table(TABLE_NAME).update(
-                            {
-                                "done": not old_value
-                            }
-                        ).eq(
-                            "id",
-                            item_id,
-                        ).execute()
+                        response = (
+                            supabase
+                            .table(TABLE_NAME)
+                            .update(
+                                {
+                                    "done": not old_value,
+                                }
+                            )
+                            .eq(
+                                "id",
+                                item_id,
+                            )
+                            .execute()
+                        )
+
+                        print(
+                            "UPDATE RESPONSE:",
+                            response,
+                        )
 
                         load_tasks()
                         show_ok("Статус задачи изменён")
 
                     except Exception as exc:
+                        print(
+                            "TOGGLE TASK ERROR:",
+                            repr(exc),
+                        )
                         show_error(str(exc))
 
+                # Удаление задачи
                 def delete_task(
                     e,
                     item_id=task_id,
                 ):
                     try:
-                        supabase.table(TABLE_NAME).delete().eq(
-                            "id",
-                            item_id,
-                        ).execute()
+                        response = (
+                            supabase
+                            .table(TABLE_NAME)
+                            .delete()
+                            .eq(
+                                "id",
+                                item_id,
+                            )
+                            .execute()
+                        )
+
+                        print(
+                            "DELETE RESPONSE:",
+                            response,
+                        )
 
                         load_tasks()
                         show_ok("Задача удалена")
 
                     except Exception as exc:
+                        print(
+                            "DELETE TASK ERROR:",
+                            repr(exc),
+                        )
                         show_error(str(exc))
 
                 # Текст задачи
@@ -168,7 +218,9 @@ def main(page: ft.Page):
                                     value=done,
                                     on_change=toggle_task,
                                 ),
+
                                 task_text,
+
                                 ft.IconButton(
                                     icon=ft.Icons.DELETE_OUTLINE,
                                     tooltip="Удалить",
@@ -178,7 +230,7 @@ def main(page: ft.Page):
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                             vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                    )
+                    ),
                 )
 
                 tasks_list.controls.append(task_card)
@@ -186,8 +238,14 @@ def main(page: ft.Page):
             page.update()
 
         except Exception as exc:
+            print(
+                "LOAD TASKS ERROR:",
+                repr(exc),
+            )
+
             show_error(str(exc))
 
+    # Добавление новой задачи
     def add_task(e):
         title = (title_field.value or "").strip()
 
@@ -196,12 +254,27 @@ def main(page: ft.Page):
             return
 
         try:
-            supabase.table(TABLE_NAME).insert(
-                {
-                    "title": title,
-                    "done": False,
-                }
-            ).execute()
+            print("INSERT START")
+            print("TITLE:", title)
+
+            # ВАЖНО:
+            # returning="minimal" просит Supabase
+            # не возвращать созданную запись.
+            response = (
+                supabase
+                .table(TABLE_NAME)
+                .insert(
+                    {
+                        "title": title,
+                        "done": False,
+                    },
+                    returning="minimal",
+                )
+                .execute()
+            )
+
+            print("INSERT RESPONSE:", response)
+            print("INSERT DATA:", response.data)
 
             title_field.value = ""
 
@@ -209,8 +282,14 @@ def main(page: ft.Page):
             show_ok("Задача добавлена")
 
         except Exception as exc:
+            print(
+                "ADD TASK ERROR:",
+                repr(exc),
+            )
+
             show_error(str(exc))
 
+    # Обновление списка
     def refresh(e):
         load_tasks()
         show_ok("Список обновлён")
@@ -218,7 +297,7 @@ def main(page: ft.Page):
     # Enter в поле тоже добавляет задачу
     title_field.on_submit = add_task
 
-    # Заголовок
+    # Интерфейс
     page.add(
         ft.Text(
             "Мои задачи",
@@ -226,8 +305,6 @@ def main(page: ft.Page):
             weight=ft.FontWeight.BOLD,
         ),
 
-        # Поле + кнопка теперь вертикально,
-        # чтобы нормально помещаться на телефоне
         ft.Column(
             [
                 title_field,
@@ -242,7 +319,6 @@ def main(page: ft.Page):
             spacing=10,
         ),
 
-        # Кнопка обновления + статус
         ft.Row(
             [
                 ft.OutlinedButton(
@@ -259,14 +335,13 @@ def main(page: ft.Page):
 
         ft.Divider(),
 
-        # Список задач
         ft.Container(
             content=tasks_list,
             expand=True,
         ),
     )
 
-    # Загружаем задачи при запуске
+    # Первичная загрузка
     load_tasks()
 
 
