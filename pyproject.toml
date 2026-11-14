@@ -2,7 +2,7 @@
 name = "my-tasks-flet"
 version = "1.0.0"
 description = "Task list application with Flet and Supabase"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14"
 dependencies = [
     "flet",
     "supabase",
