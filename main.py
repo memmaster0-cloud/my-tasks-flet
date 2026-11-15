@@ -1,8 +1,10 @@
+import json
 import os
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import flet as ft
-import httpx
-from supabase import create_client, Client
 
 
 # Supabase config generated during GitHub Actions build
@@ -17,24 +19,165 @@ except ImportError:
 TABLE_NAME = "tasks"
 
 
-def get_config() -> tuple[str, str]:
-    """Get Supabase credentials from environment or bundled app config."""
-
+def get_config():
     url = os.getenv("SUPABASE_URL") or CONFIG_URL
     key = os.getenv("SUPABASE_KEY") or CONFIG_KEY
 
-    if url and key:
-        return url, key
+    if not url or not key:
+        raise RuntimeError(
+            "Supabase credentials are not configured."
+        )
 
-    raise RuntimeError(
-        "Supabase credentials are not configured. "
-        "Set SUPABASE_URL and SUPABASE_KEY."
+    return url.rstrip("/"), key
+
+
+def supabase_request(
+    method,
+    path,
+    params=None,
+    body=None,
+):
+    """
+    Прямой запрос к Supabase REST API.
+    Используется urllib, без supabase-py и httpx.
+    """
+
+    url, key = get_config()
+
+    request_url = f"{url}/rest/v1/{path}"
+
+    if params:
+        request_url += "?" + urlencode(params)
+
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "my-tasks-flet/1.0",
+    }
+
+    data = None
+
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+
+    request = Request(
+        request_url,
+        data=data,
+        headers=headers,
+        method=method,
     )
 
+    try:
+        with urlopen(request, timeout=20) as response:
+            status_code = response.status
+            raw = response.read().decode("utf-8")
 
-def create_supabase_client() -> Client:
-    url, key = get_config()
-    return create_client(url, key)
+            if not raw:
+                return status_code, None
+
+            try:
+                return status_code, json.loads(raw)
+            except json.JSONDecodeError:
+                return status_code, raw
+
+    except HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+
+        raise RuntimeError(
+            f"Supabase HTTP {exc.code}: {raw}"
+        ) from exc
+
+    except URLError as exc:
+        raise RuntimeError(
+            f"Ошибка сети Supabase: {exc}"
+        ) from exc
+
+
+def get_tasks():
+    status_code, data = supabase_request(
+        "GET",
+        TABLE_NAME,
+        params={
+            "select": "id,title,done,created_at",
+            "order": "created_at.desc",
+        },
+    )
+
+    if status_code != 200:
+        raise RuntimeError(
+            f"Ошибка загрузки задач: HTTP {status_code}"
+        )
+
+    if data is None:
+        return []
+
+    if not isinstance(data, list):
+        raise RuntimeError(
+            "Supabase вернул неожиданный формат данных: "
+            f"{type(data).__name__}: {data}"
+        )
+
+    return data
+
+
+def create_task(title):
+    status_code, data = supabase_request(
+        "POST",
+        TABLE_NAME,
+        params={
+            "select": "id,title,done,created_at",
+        },
+        body={
+            "title": title,
+            "done": False,
+        },
+    )
+
+    if status_code not in (200, 201):
+        raise RuntimeError(
+            f"Ошибка добавления задачи: HTTP {status_code}"
+        )
+
+    return data
+
+
+def update_task(task_id, done):
+    status_code, data = supabase_request(
+        "PATCH",
+        TABLE_NAME,
+        params={
+            "id": f"eq.{task_id}",
+        },
+        body={
+            "done": done,
+        },
+    )
+
+    if status_code not in (200, 204):
+        raise RuntimeError(
+            f"Ошибка обновления задачи: HTTP {status_code}"
+        )
+
+    return data
+
+
+def delete_task(task_id):
+    status_code, data = supabase_request(
+        "DELETE",
+        TABLE_NAME,
+        params={
+            "id": f"eq.{task_id}",
+        },
+    )
+
+    if status_code not in (200, 204):
+        raise RuntimeError(
+            f"Ошибка удаления задачи: HTTP {status_code}"
+        )
+
+    return data
 
 
 def main(page: ft.Page):
@@ -43,163 +186,89 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.LIGHT
     page.scroll = ft.ScrollMode.AUTO
 
-    # Подключение к Supabase
-    try:
-        supabase = create_supabase_client()
-
-    except Exception as exc:
-        page.add(
-            ft.Text(
-                "Ошибка подключения к Supabase",
-                size=22,
-                weight=ft.FontWeight.BOLD,
-            ),
-            ft.Text(
-                str(exc),
-                selectable=True,
-            ),
-        )
-        return
-
-    # Поле ввода новой задачи
     title_field = ft.TextField(
         label="Название задачи",
         hint_text="Например: подготовить отчёт",
         width=350,
     )
 
-    # Список задач
     tasks_list = ft.ListView(
         expand=True,
         spacing=8,
         auto_scroll=False,
     )
 
-    # Статус
     status = ft.Text(
         "Готово",
         color=ft.Colors.GREY_700,
     )
 
-    def show_error(message: str):
+    def show_error(message):
         status.value = f"Ошибка: {message}"
         status.color = ft.Colors.RED_700
         page.update()
 
-    def show_ok(message: str):
+    def show_ok(message):
         status.value = message
         status.color = ft.Colors.GREEN_700
         page.update()
 
-    # Загрузка задач
     def load_tasks():
         try:
-            response = (
-                supabase
-                .table(TABLE_NAME)
-                .select("id,title,done,created_at")
-                .order("created_at", desc=True)
-                .execute()
-            )
-
-            print("SUPABASE RESPONSE:", response)
-            print("RESPONSE DATA:", response.data)
-            print("DATA TYPE:", type(response.data))
+            tasks = get_tasks()
 
             tasks_list.controls.clear()
 
-            for task in response.data or []:
-
-                print("TASK:", task)
-                print("TASK TYPE:", type(task))
+            for task in tasks:
 
                 if not isinstance(task, dict):
-                    raise TypeError(
-                        "Ожидался объект задачи (dict), "
-                        f"но получено {type(task).__name__}: {task}"
+                    raise RuntimeError(
+                        "Supabase вернул задачу не как объект: "
+                        f"{type(task).__name__}"
                     )
 
                 task_id = task["id"]
+                task_title = task["title"]
                 done = bool(task["done"])
 
-                # Изменение статуса задачи
                 def toggle_task(
                     e,
                     item_id=task_id,
                     old_value=done,
                 ):
                     try:
-                        response = (
-                            supabase
-                            .table(TABLE_NAME)
-                            .update(
-                                {
-                                    "done": not old_value,
-                                }
-                            )
-                            .eq(
-                                "id",
-                                item_id,
-                            )
-                            .execute()
-                        )
-
-                        print(
-                            "UPDATE RESPONSE:",
-                            response,
+                        update_task(
+                            item_id,
+                            not old_value,
                         )
 
                         load_tasks()
                         show_ok("Статус задачи изменён")
 
                     except Exception as exc:
-                        print(
-                            "TOGGLE TASK ERROR:",
-                            repr(exc),
-                        )
                         show_error(str(exc))
 
-                # Удаление задачи
-                def delete_task(
+                def remove_task(
                     e,
                     item_id=task_id,
                 ):
                     try:
-                        response = (
-                            supabase
-                            .table(TABLE_NAME)
-                            .delete()
-                            .eq(
-                                "id",
-                                item_id,
-                            )
-                            .execute()
-                        )
-
-                        print(
-                            "DELETE RESPONSE:",
-                            response,
-                        )
+                        delete_task(item_id)
 
                         load_tasks()
                         show_ok("Задача удалена")
 
                     except Exception as exc:
-                        print(
-                            "DELETE TASK ERROR:",
-                            repr(exc),
-                        )
                         show_error(str(exc))
 
-                # Текст задачи
                 task_text = ft.Text(
-                    task["title"],
+                    task_title,
                     expand=True,
                     size=16,
                     weight=(
-                        ft.FontWeight.BOLD
-                        if not done
-                        else ft.FontWeight.NORMAL
+                        ft.FontWeight.NORMAL
+                        if done
+                        else ft.FontWeight.BOLD
                     ),
                     style=(
                         ft.TextStyle(
@@ -210,7 +279,6 @@ def main(page: ft.Page):
                     ),
                 )
 
-                # Карточка задачи
                 task_card = ft.Card(
                     content=ft.Container(
                         padding=10,
@@ -226,11 +294,13 @@ def main(page: ft.Page):
                                 ft.IconButton(
                                     icon=ft.Icons.DELETE_OUTLINE,
                                     tooltip="Удалить",
-                                    on_click=delete_task,
+                                    on_click=remove_task,
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            vertical_alignment=(
+                                ft.CrossAxisAlignment.CENTER
+                            ),
                         ),
                     ),
                 )
@@ -240,16 +310,8 @@ def main(page: ft.Page):
             page.update()
 
         except Exception as exc:
-            print(
-                "LOAD TASKS ERROR:",
-                repr(exc),
-            )
-
             show_error(str(exc))
 
-    # Добавление новой задачи
-    # Используем прямой REST API через httpx,
-    # потому что supabase-py insert() возвращал 405.
     def add_task(e):
         title = (title_field.value or "").strip()
 
@@ -258,38 +320,7 @@ def main(page: ft.Page):
             return
 
         try:
-            url, key = get_config()
-
-            response = httpx.post(
-                f"{url}/rest/v1/{TABLE_NAME}",
-                headers={
-                    "apikey": key,
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                    "Prefer": "return=minimal",
-                },
-                json={
-                    "title": title,
-                    "done": False,
-                },
-                timeout=15,
-            )
-
-            print(
-                "DIRECT INSERT STATUS:",
-                response.status_code,
-            )
-
-            print(
-                "DIRECT INSERT RESPONSE:",
-                response.text,
-            )
-
-            if response.status_code not in (200, 201, 204):
-                raise RuntimeError(
-                    f"Supabase INSERT error "
-                    f"{response.status_code}: {response.text}"
-                )
+            create_task(title)
 
             title_field.value = ""
 
@@ -297,22 +328,14 @@ def main(page: ft.Page):
             show_ok("Задача добавлена")
 
         except Exception as exc:
-            print(
-                "ADD TASK ERROR:",
-                repr(exc),
-            )
-
             show_error(str(exc))
 
-    # Обновление списка
     def refresh(e):
         load_tasks()
         show_ok("Список обновлён")
 
-    # Enter в поле тоже добавляет задачу
     title_field.on_submit = add_task
 
-    # Интерфейс
     page.add(
         ft.Text(
             "Мои задачи",
@@ -356,7 +379,6 @@ def main(page: ft.Page):
         ),
     )
 
-    # Первичная загрузка
     load_tasks()
 
 
